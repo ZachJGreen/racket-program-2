@@ -1,10 +1,24 @@
 #lang racket/base
 
 (require rackunit
+         racket/file
+         racket/list
+         racket/runtime-path
          "../src/scanner.rkt"
          "../src/token.rkt")
 
+(define-runtime-path testfiles-directory "../tests_text")
+
+(define words
+  '("program" "decl" "as" "int" "real" "bool" "string" "routine" "returns"
+    "choose" "match" "otherwise" "loop" "until" "do" "invoke" "yield"
+    "not" "and" "or" "yes" "no" "maybe"))
+
 (module+ test
+  (test-case "scanner leaves every keyword spelling as an identifier"
+    (for ([word words])
+      (check-equal? (scan word) (list (token 'identifier word 1)))))
+
   (test-case "empty and whitespace-only input produce no tokens"
     (check-equal? (scan "") '())
     (check-equal? (scan " \t\n\r\n\r") '()))
@@ -290,6 +304,21 @@
                         (token 'int-literal "1" 5)))
     (check-exn #rx"unsupported character .* on line 2"
                (lambda () (scan "-- ignored\r\n@"))))
+
+  (for ([fixture '(("Testfile-1.txt" "CustomDemo" 2 27)
+                   ("Testfile-2.txt" "KeywordAsVariable" 1 27)
+                   ("Testfile-3.txt" "Comparison" 1 26)
+                   ("Testfile-4.txt" "Booleans" 1 31))])
+    (test-case (string-append (car fixture) " scans with correct boundary token lines")
+      (define tokens (scan (file->string (build-path testfiles-directory (car fixture)))))
+      (check-equal? (take tokens 2)
+                    (list (token 'identifier "program" (caddr fixture))
+                          (token 'identifier (cadr fixture) (caddr fixture))))
+      (check-equal? (last tokens) (token 'right-brace "}" (cadddr fixture)))))
+
+  (test-case "Testfile-5 reports the unterminated string opening line"
+    (check-exn #rx"scan: unterminated string on line 25"
+               (lambda () (scan (file->string (build-path testfiles-directory "Testfile-5.txt"))))))
 
   (test-case "scan rejects non-string input at its boundary"
     (check-exn exn:fail:contract? (lambda () (scan #f)))))
